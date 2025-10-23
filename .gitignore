@@ -1,0 +1,17 @@
+# Archivos de backup
+backups/*.sql
+
+# Archivos de configuración local
+includes/config.php
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Archivos temporales
+*.tmp
+*.bak
+
+# Carpetas de IDE
+.vscode/
+.idea/

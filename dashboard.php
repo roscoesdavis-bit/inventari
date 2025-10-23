@@ -35,6 +35,18 @@ include('includes/auth.php');
         <h3>Registrar Ventas</h3>
         <p>Procesa nuevas ventas y genera comprobantes</p>
       </a>
+
+      <a href="backup.php" class="menu-card">
+        <div class="menu-icon">📦</div>
+        <h3>Backup de Datos</h3>
+        <p>Crea copias de seguridad de la base de datos</p>
+      </a>
+
+      <a href="restore.php" class="menu-card">
+        <div class="menu-icon">🔄</div>
+        <h3>Restaurar Datos</h3>
+        <p>Restaura copias de seguridad anteriores</p>
+      </a>
     </div>
 
     <div class="logout-section">
