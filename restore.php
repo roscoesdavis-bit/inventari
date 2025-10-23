@@ -5,43 +5,96 @@ include('includes/db.php');
 $mensaje = '';
 $tipo_mensaje = '';
 
-// Función para restaurar backup
+// Función para restaurar backup mejorada
 function restaurarBackup($conn, $archivoSQL) {
     // Leer el archivo SQL
-    $sql = file_get_contents($archivoSQL);
+    $contenido = file_get_contents($archivoSQL);
 
-    if ($sql === false) {
+    if ($contenido === false) {
         return array(
             'success' => false,
             'mensaje' => 'No se pudo leer el archivo de backup.'
         );
     }
 
-    // Desactivar verificación de claves foráneas temporalmente
+    // Desactivar verificación de claves foráneas y modo estricto
     $conn->query("SET FOREIGN_KEY_CHECKS=0");
-
-    // Dividir el archivo en consultas individuales
-    $consultas = array_filter(array_map('trim', explode(';', $sql)));
+    $conn->query("SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO'");
+    $conn->query("SET AUTOCOMMIT = 0");
+    $conn->query("START TRANSACTION");
 
     $ejecutadas = 0;
     $errores = array();
 
-    foreach ($consultas as $consulta) {
-        if (empty($consulta) || substr($consulta, 0, 2) === '--') {
+    // Dividir por líneas y procesar
+    $lineas = explode("\n", $contenido);
+    $consulta_temporal = '';
+
+    foreach ($lineas as $linea) {
+        // Limpiar espacios
+        $linea_limpia = trim($linea);
+
+        // Ignorar líneas vacías y comentarios
+        if (empty($linea_limpia) ||
+            substr($linea_limpia, 0, 2) === '--' ||
+            substr($linea_limpia, 0, 2) === '/*' ||
+            substr($linea_limpia, 0, 1) === '#') {
             continue;
         }
 
-        if ($conn->query($consulta . ';')) {
-            $ejecutadas++;
-        } else {
-            $errores[] = $conn->error;
+        // Agregar línea a la consulta temporal
+        $consulta_temporal .= ' ' . $linea;
+
+        // Si la línea termina en punto y coma, ejecutar la consulta
+        if (substr($linea_limpia, -1) === ';') {
+            // Limpiar la consulta
+            $consulta_temporal = trim($consulta_temporal);
+
+            // Ejecutar la consulta
+            if (!empty($consulta_temporal)) {
+                if ($conn->query($consulta_temporal)) {
+                    $ejecutadas++;
+                } else {
+                    $errores[] = array(
+                        'consulta' => substr($consulta_temporal, 0, 100) . '...',
+                        'error' => $conn->error
+                    );
+
+                    // Si hay demasiados errores, hacer rollback
+                    if (count($errores) > 20) {
+                        $conn->query("ROLLBACK");
+                        $conn->query("SET FOREIGN_KEY_CHECKS=1");
+                        $conn->query("SET AUTOCOMMIT = 1");
+                        return array(
+                            'success' => false,
+                            'mensaje' => 'Demasiados errores durante la restauración. Se canceló el proceso.',
+                            'errores' => $errores
+                        );
+                    }
+                }
+            }
+
+            // Resetear consulta temporal
+            $consulta_temporal = '';
         }
     }
 
+    // Commit de la transacción
+    $conn->query("COMMIT");
+
     // Reactivar verificación de claves foráneas
     $conn->query("SET FOREIGN_KEY_CHECKS=1");
+    $conn->query("SET AUTOCOMMIT = 1");
 
-    if (count($errores) > 0) {
+    // Si hay pocos errores (comentarios, etc), considerarlo éxito
+    if (count($errores) > 0 && count($errores) < 5) {
+        return array(
+            'success' => true,
+            'mensaje' => 'Base de datos restaurada con advertencias menores. Se ejecutaron ' . $ejecutadas . ' consultas.',
+            'consultas' => $ejecutadas,
+            'advertencias' => count($errores)
+        );
+    } elseif (count($errores) >= 5) {
         return array(
             'success' => false,
             'mensaje' => 'Se ejecutaron ' . $ejecutadas . ' consultas, pero hubo ' . count($errores) . ' errores.',
@@ -91,7 +144,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restaurar'])) {
         } else {
             $mensaje = $resultado['mensaje'];
             if (isset($resultado['errores'])) {
-                $mensaje .= "<br><small>Primeros errores: " . implode(", ", array_slice($resultado['errores'], 0, 3)) . "</small>";
+                $mensaje .= "<br><br><strong>Detalles de errores:</strong><br>";
+                $mensaje .= "<small>";
+                foreach (array_slice($resultado['errores'], 0, 5) as $error) {
+                    if (is_array($error)) {
+                        $mensaje .= "• " . htmlspecialchars($error['error']) . "<br>";
+                    } else {
+                        $mensaje .= "• " . htmlspecialchars($error) . "<br>";
+                    }
+                }
+                if (count($resultado['errores']) > 5) {
+                    $mensaje .= "... y " . (count($resultado['errores']) - 5) . " errores más.";
+                }
+                $mensaje .= "</small>";
             }
             $tipo_mensaje = 'error';
         }

@@ -21,7 +21,8 @@ function crearBackup($conn, $db) {
     $contenido .= "-- Fecha: " . date('Y-m-d H:i:s') . "\n";
     $contenido .= "-- Generado por Sistema de Inventario Omega Cars\n\n";
     $contenido .= "SET SQL_MODE = \"NO_AUTO_VALUE_ON_ZERO\";\n";
-    $contenido .= "SET time_zone = \"+00:00\";\n\n";
+    $contenido .= "SET time_zone = \"+00:00\";\n";
+    $contenido .= "SET FOREIGN_KEY_CHECKS = 0;\n\n";
 
     // Obtener todas las tablas
     $tablas = array();
@@ -69,6 +70,12 @@ function crearBackup($conn, $db) {
 
         $contenido .= "\n";
     }
+
+    // Reactivar verificación de claves foráneas
+    $contenido .= "\n-- --------------------------------------------------------\n";
+    $contenido .= "-- Reactivar verificación de claves foráneas\n";
+    $contenido .= "-- --------------------------------------------------------\n\n";
+    $contenido .= "SET FOREIGN_KEY_CHECKS = 1;\n";
 
     // Guardar archivo
     if (file_put_contents($backupFile, $contenido)) {
